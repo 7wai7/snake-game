@@ -53,8 +53,9 @@ export function killSnake(snake) {
                 y: base.y + Math.sin(angle) * radius
             };
 
-            food.set(foodId++, p);
-            emitter.emit("spawn-food", { id: foodId - 1, pos: p });
+            foodId++;
+            food.set(foodId, p);
+            emitter.emit("spawn-food", { id: foodId, ...p });
         }
     }
 
@@ -68,8 +69,10 @@ function spawnRandomFood() {
         x: Math.cos(angle) * Math.random() * worldRadius,
         y: Math.sin(angle) * Math.random() * worldRadius
     }
-    food.set(foodId++, p);
-    emitter.emit("spawn-food", { id: foodId, pos: p})
+
+    foodId++;
+    food.set(foodId, p);
+    emitter.emit("spawn-food", { id: foodId, ...p })
 }
 
 function eatFood(id) {
@@ -77,19 +80,19 @@ function eatFood(id) {
     emitter.emit("eat-food", id);
 }
 
-function getCellKey(x, y) {
+function getCellKey(x, y, cellSize = 40) {
     const cx = Math.floor(x / cellSize);
     const cy = Math.floor(y / cellSize);
     return `${cx},${cy}`;
 }
 
-function buildSpatialGrid() {
+export function buildSpatialGrid(cellSize) {
     spatialGrid.clear();
 
     for (const s of snakes.values()) {
         for (let i = 2; i < s.tail.length; i++) {
             const p = s.tail[i];
-            const key = getCellKey(p.x, p.y);
+            const key = getCellKey(p.x, p.y, cellSize);
 
             if (!spatialGrid.has(key)) {
                 spatialGrid.set(key, []);
@@ -101,7 +104,7 @@ function buildSpatialGrid() {
 }
 
 function calculateCollision() {
-    buildSpatialGrid();
+    buildSpatialGrid(cellSize);
 
     const collisionDistance = 16;
 
@@ -180,8 +183,48 @@ function calculateCollisionFood() {
 }
 
 
+export function getVisibleSnakeSegments(centerSnake, radius = 1500, cellSize = 40) {
+    const head = centerSnake.tail[0];
+    const cx = Math.floor(head.x / cellSize);
+    const cy = Math.floor(head.y / cellSize);
+    const result = new Map();
+
+    for (let dx = -Math.ceil(radius / cellSize); dx <= Math.ceil(radius / cellSize); dx++) {
+        for (let dy = -Math.ceil(radius / cellSize); dy <= Math.ceil(radius / cellSize); dy++) {
+            const key = `${cx + dx},${cy + dy}`;
+            const points = spatialGrid.get(key);
+            if (!points) continue;
+
+            for (const { snake: otherSnake, point } of points) {
+                if (otherSnake.id === centerSnake.id) continue;
+
+                const dx = point.x - head.x;
+                const dy = point.y - head.y;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq < radius * radius) {
+                    if (!result.has(otherSnake.id)) {
+                        result.set(otherSnake.id, {
+                            id: otherSnake.id,
+                            name: otherSnake.name,
+                            skin: otherSnake.skin,
+                            tail: []
+                        });
+                    }
+                    result.get(otherSnake.id).tail.push({ x: point.x, y: point.y });
+                }
+            }
+        }
+    }
+
+    return Array.from(result.values());
+}
+
+
+
 
 function update(dt) {
+    const start = performance.now();
     for (const s of snakes.values()) {
         s.update(dt);
 
@@ -204,6 +247,11 @@ function update(dt) {
         spawnFoodTime = 0;
         spawnRandomFood();
     }
+
+    
+    const end = performance.now();
+    const time = end - start;
+    if (time > 10) console.warn(`⚠️ Update time: ${time.toFixed(2)}ms`);
 }
 
 
@@ -218,9 +266,10 @@ export function initGame() {
         const now = Date.now();
         const deltaTime = (now - lastTime) / 1000;
         lastTime = now;
+        if (deltaTime > 0.05) console.warn(`[CLIENT] Δt=${deltaTime.toFixed(3)}s — frame skip or lag`);
 
         update(deltaTime);
-    }, 16); // ~60 FPS
+    }, 30);
 
 
     for (let i = 0; i < 5000; i++) {

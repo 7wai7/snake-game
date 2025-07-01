@@ -6,6 +6,8 @@ import { createSnake, removeSnake, initGame, snakes, worldRadius, food, emitter 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const TICK_RATE = 50;
+
 
 export default function initSocket(server) {
     const wss = new WebSocketServer({
@@ -16,7 +18,7 @@ export default function initSocket(server) {
 
     wss.on('connection', async ws => {
         ws.id = Date.now().toString() + "_" + Math.floor(Math.random() * 1e7);
-
+        ws.started = false;
 
         ws.on('message', async raw => {
             try {
@@ -32,16 +34,21 @@ export default function initSocket(server) {
                     ws.snake = createSnake(ws.id);
                     ws.snake.name = msg.name;
                     ws.name = msg.name;
+                    ws.started = true;
                     initGame();
 
                     ws.send(JSON.stringify({
                         type: 'start',
                         id: ws.id,
-                        snakes: Array.from(snakes.entries()).map(([id, snake]) => ({ id, ...snake })),
+                        snakes: Array.from(snakes.entries()).map(([id, snake]) => ({ id, name: snake.name, skin: snake.skin, tail: snake.tail })),
                         worldRadius,
-                        food: Array.from(food.entries()).map(([id, pos]) => ({ id, ...pos }))
+                        food: Array.from(food.entries()).map(([id, pos]) => ({ id, x: Math.round(pos.x), y: Math.round(pos.y) }))
                     }));
-                } else if(msg.type === "mouse down") {
+                }
+                
+                if(!ws.started) return;
+
+                if(msg.type === "mouse down") {
                     ws.snake.fast();
                 } else if(msg.type === "mouse up") {
                     ws.snake.slow();
@@ -74,7 +81,7 @@ export default function initSocket(server) {
     emitter.on("kill-snake", (id) => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                if(!client.name) return;
+                if(!client.started) return;
     
                 client.send(JSON.stringify({
                     type: "kill-snake",
@@ -87,11 +94,13 @@ export default function initSocket(server) {
     emitter.on("spawn-food", (f) => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                if(!client.name) return;
+                if(!client.started) return;
     
                 client.send(JSON.stringify({
                     type: "food-spawn",
-                    ...f
+                    id: f.id,
+                    x: Math.round(f.x),
+                    y: Math.round(f.y)
                 }));
             }
         });
@@ -100,7 +109,7 @@ export default function initSocket(server) {
     emitter.on("eat-food", (id) => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                if(!client.name) return;
+                if(!client.started) return;
     
                 client.send(JSON.stringify({
                     type: "food-remove",
@@ -114,13 +123,18 @@ export default function initSocket(server) {
     setInterval(() => {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                if(!client.name) return;
+                if(!client.started) return;
     
                 client.send(JSON.stringify({
                     type: "snakes",
-                    snakes: Array.from(snakes.entries()).map(([id, snake]) => ({ id, ...snake }))
+                    snakes: Array.from(snakes.entries()).map(([id, snake]) => ({
+                        id,
+                        name: snake.name,
+                        skin: snake.skin,
+                        tail: snake.tail
+                    }))
                 }));
             }
         });
-    }, 16)
+    }, TICK_RATE)
 }

@@ -172,7 +172,6 @@ function drawDemonSnake(ctx, snake, widthFactor) {
         const neck = snake[1] || head;
         const angle = Math.atan2(head.y - neck.y, head.x - neck.x) + Math.PI / 2;
     
-        // Малюємо роги
         const hornSize = 23;
         ctx.save();
         ctx.translate(head.x, head.y);
@@ -187,7 +186,6 @@ function drawDemonSnake(ctx, snake, widthFactor) {
         const preTail = snake[snake.length - 2] || tail;
         const tailAngle = Math.atan2(tail.y - preTail.y, tail.x - preTail.x) - Math.PI / 2;
     
-        // Малюємо хвіст
         const tailSize = 23;
         ctx.save();
         ctx.translate(tail.x, tail.y);

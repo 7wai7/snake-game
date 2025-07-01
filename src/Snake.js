@@ -75,7 +75,7 @@ export default class Snake {
 
 
         if(this.fastMove && this.length > 5) {
-            this.length -= dt * .7;
+            this.length -= dt * .5;
         }
 
         while(Math.floor(this.length) > this.tail.length) {
