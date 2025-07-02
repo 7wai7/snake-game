@@ -23,7 +23,7 @@ function lerp(a, b, t) {
 
 document.addEventListener("DOMContentLoaded", async () => {
 
-    const socket = new WebSocket(`ws://${location.host}`);
+    const socket = new WebSocket(`wss://${location.host}`);
     const canvas = document.createElement("canvas");
     document.body.appendChild(canvas);
     const ctx = canvas.getContext('2d');
