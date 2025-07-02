@@ -15,6 +15,11 @@ function getRandomColor() {
     return color;
 }
 
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
+
 
 document.addEventListener("DOMContentLoaded", async () => {
 
@@ -68,13 +73,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (data.type === "start") {
             id = data.id;
             for (const s of data.snakes) {
-                snakes.set(s.id, s);
+                
+                if(snakes.has(s.id)) {
+                    const snake = snakes.get(s.id);
+                    snake.name = s.name;
+                    snake.skin = s.skin;
+                    snake.tail = s.tail;
+                } else {
+                    snakes.set(s.id, {...s, tailInterpolation: s.tail});
+                    
+                }
             }
 
             player = snakes.get(id);
             worldRadius = data.worldRadius;
             for (const f of data.food) {
-                food.set(f.id, { x: f.x, y: f.y, color: getRandomColor(), pulseValue: Math.random(), pulse: true });
+                food.set(f.id, { x: f.x, y: f.y, color: { r: Math.random() * 255, g: Math.random() * 255, b: Math.random() * 255, }, pulseValue: Math.random(), pulse: true });
             }
 
 
@@ -93,11 +107,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if(!started) return;
         
         if (data.type === "food-spawn") {
-            console.log(data);
-            console.log({ x: data.x, y: data.y, color: getRandomColor(), pulseValue: Math.random(), pulse: true });
-            
-            
-            food.set(data.id, { x: data.x, y: data.y, color: getRandomColor(), pulseValue: Math.random(), pulse: true });
+            food.set(data.id, { x: data.x, y: data.y, color: { r: Math.random() * 255, g: Math.random() * 255, b: Math.random() * 255, }, pulseValue: Math.random(), pulse: true });
         } else if (data.type === "food-remove") {
             food.delete(data.id);
         } else if (data.type === "kill-snake") {
@@ -106,7 +116,22 @@ document.addEventListener("DOMContentLoaded", async () => {
             if(data.id === id) stopGame();
         } else if (data.type === "snakes") {
             for (const s of data.snakes) {
-                snakes.set(s.id, s);
+                if(snakes.has(s.id)) {
+                    const snake = snakes.get(s.id);
+                    snake.name = s.name;
+                    snake.skin = s.skin;
+                    snake.tail = s.tail;
+
+                    while(snake.tail.length > snake.tailInterpolation.length) {
+                        snake.tailInterpolation.push({...snake.tail[snake.tailInterpolation.length]});
+                    }
+                    if(snake.tail.length < snake.tailInterpolation.length) {
+                        snake.tailInterpolation.splice(snake.tail.length - snake.tailInterpolation.length);
+                    }
+                } else {
+                    snakes.set(s.id, {...s, tailInterpolation: s.tail});
+                    
+                }
             }
 
             player = snakes.get(id);
@@ -169,7 +194,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         if (player) {
-            const head = player.tail[0]; // голова
+            const head = player.tailInterpolation[0]; // голова
             playerPos.x = head.x;
             playerPos.y = head.y;
             cameraOffset.x = canvas.width / 2 - head.x;
@@ -187,6 +212,18 @@ document.addEventListener("DOMContentLoaded", async () => {
             }));
         }
 
+        
+        for (const s of snakes.values()) {
+            const target = s.tail;
+            const interp = s.tailInterpolation;
+        
+            for (let i = 0; i < target.length; i++) {
+                interp[i].x = lerp(interp[i].x, target[i].x, 0.3);
+                interp[i].y = lerp(interp[i].y, target[i].y, 0.3);
+            }
+        }
+        
+
 
         // === Перемістити всю сцену ===
         ctx.setTransform(1, 0, 0, 1, 0, 0); // скинути попередню трансформацію
@@ -200,12 +237,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         ctx.fillRect(cx, cy, plateSize, plateSize);
 
 
-        ctx.fillStyle = "red";
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 10, 10, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-
 
         for (const f of food.values()) {
             if (f.pulseValue > 1) f.pulse = false;
@@ -217,15 +248,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             const pulseValue = 3 + f.pulseValue * 3;
 
-            ctx.fillStyle = f.color;
             ctx.beginPath();
-            ctx.ellipse(f.x, f.y, pulseValue, pulseValue, 0, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${f.color.r}, ${f.color.g}, ${f.color.b}, ${.3 + f.pulseValue})`;
+            ctx.shadowColor = `rgba(${f.color.r}, ${f.color.g}, ${f.color.b})`;
+            ctx.shadowBlur = 10;
+            ctx.arc(f.x, f.y, pulseValue, 0, Math.PI * 2);
             ctx.fill();
         }
+        ctx.shadowColor = "#b7acd1";
+        ctx.shadowBlur = 0;
 
 
         for (const s of snakes.values()) {
-            const snake = s.tail;
+            const snake = s.tailInterpolation;
             const widthFactor = 16;
 
             switch (s.skin) {
@@ -275,17 +310,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const end = performance.now();
         const time = end - start;
-        frameTimes.push(time);
+        /* frameTimes.push(time);
     
         if (frameTimes.length > 100) frameTimes.shift();
-        const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+        const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length; */
 
         
     
-        if (time > 16.6) console.log(time);
-        if (avg > 16.6) {
+        if (time > 16.6) console.warn(`⚠️ Render time: ${time.toFixed(2)}ms`);
+        /* if (avg > 16.6) {
             console.warn(`⚠️ Render avg: ${avg.toFixed(2)}ms`);
-        }
+        } */
     }
 
     function setupCanvas() {
@@ -299,6 +334,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 
     function startGame() {
+        const nameInput = document.getElementById('name-input');
+        if (!nameInput.value.trim()) return;
+        const modal = document.getElementById('set-name-modal');
+        document.cookie = `name=${nameInput.value}`;
+        modal.setAttribute('hidden', '');
+
         socket.send(JSON.stringify({
             type: "start",
             name: getCookie('name')
@@ -312,9 +353,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             started = false;
             clearInterval(interval);
 
-            setTimeout(() => {
-                startGame();
-            }, 3000);
+            const modal = document.getElementById('set-name-modal');
+            modal.removeAttribute('hidden');
         }, 3000);
     }
 
@@ -339,13 +379,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             modal.removeAttribute('hidden');
         }
 
-        const saveName = () => {
-            if (!nameInput.value.trim()) return;
-            document.cookie = `name=${nameInput.value}`;
-            modal.setAttribute('hidden', '');
-            startGame();
-        }
-
         nameInput.addEventListener("input", function (e) {
             if (nameInput.value.trim()) setNameBtn.classList.add('done');
             else setNameBtn.classList.remove('done');
@@ -354,11 +387,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         nameInput.addEventListener("keydown", function (e) {
             if (e.key === 'Enter' || e.keyCode === 13) {
                 e.preventDefault();
-                saveName();
+                startGame();
             }
         });
 
-        setNameBtn.addEventListener("click", saveName);
+        setNameBtn.addEventListener("click", startGame);
     } catch (error) {
         console.error(error);
     }
