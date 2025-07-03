@@ -1,7 +1,7 @@
 import WebSocket, { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { createSnake, removeSnake, initGame, snakes, worldRadius, food, emitter } from './game.js';
+import { createSnake, killSnake, initGame, snakes, worldRadius, food, emitter } from './game.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -68,12 +68,12 @@ export default function initSocket(server) {
 
         ws.on('close', () => {
             console.log(`Зʼєднання з клієнтом ${ws.id} закрито`);
-            removeSnake(ws.snake);
+            killSnake(ws.snake);
         });
 
         ws.on('error', err => {
             console.error('WebSocket помилка:', err);
-            removeSnake(ws.snake);
+            killSnake(ws.snake);
         });
     })
 
