@@ -19,11 +19,54 @@ function lerp(a, b, t) {
     return a + (b - a) * t;
 }
 
+function getCellKey(x, y, cellSize = 40) {
+    const cx = Math.floor(x / cellSize);
+    const cy = Math.floor(y / cellSize);
+    return `${cx},${cy}`;
+}
+
+function buildSpatialGridFood(food, foodSpatialGrid, cellSize = 40) {
+    foodSpatialGrid.clear();
+
+    for (const [id, pos] of food) {
+        const key = getCellKey(pos.x, pos.y, cellSize);
+        if (!foodSpatialGrid.has(key)) {
+            foodSpatialGrid.set(key, []);
+        }
+        foodSpatialGrid.get(key).push({ id, ...pos });
+    }
+}
+
+function generateFoodSprites() {
+
+    const food = [];
+    for (let i = 0; i < 100; i++) {
+        const foodSprite = document.createElement('canvas');
+        foodSprite.width = foodSprite.height = 20;
+        const spriteCtx = foodSprite.getContext('2d');
+        
+        const r = Math.random() * 255;
+        const g = Math.random() * 255;
+        const b = Math.random() * 255;
+
+        spriteCtx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
+        spriteCtx.shadowColor = `rgba(${r}, ${g}, ${b}, 1)`;
+        spriteCtx.shadowBlur = 10;
+        spriteCtx.beginPath();
+        spriteCtx.arc(10, 10, 6, 0, Math.PI * 2);
+        spriteCtx.fill();
+
+        food.push(foodSprite);
+    }
+
+    return food;
+}
+
 
 
 document.addEventListener("DOMContentLoaded", async () => {
 
-    const socket = new WebSocket(`wss://${location.host}`);
+    const socket = new WebSocket(`ws://${location.host}`);
     const canvas = document.createElement("canvas");
     document.body.appendChild(canvas);
     const ctx = canvas.getContext('2d');
@@ -35,6 +78,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const snakes = new Map();
     const food = new Map();
+    let foodSpatialGrid = new Map();
+    /* const foodSprites = generateFoodSprites(); */
     let id;
     let player;
     let playerPos = { ...zero };
@@ -64,9 +109,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         const intervalTime = now - lastWS;
         lastWS = now;
     
-        if (intervalTime < 10) {
+        /* if (intervalTime < 10) {
             console.warn("⚠ WS interval", intervalTime.toFixed(1), "ms");
-        }
+        } */
 
         const data = JSON.parse(event.data);
 
@@ -88,7 +133,19 @@ document.addEventListener("DOMContentLoaded", async () => {
             player = snakes.get(id);
             worldRadius = data.worldRadius;
             for (const f of data.food) {
-                food.set(f.id, { x: f.x, y: f.y, color: { r: Math.random() * 255, g: Math.random() * 255, b: Math.random() * 255, }, pulseValue: Math.random(), pulse: true });
+                food.set(f.id,
+                    {
+                        x: f.x,
+                        y: f.y,
+                        /* colorIndex: Math.floor(Math.random() * foodSprites.length), */
+                        color: {
+                            r: Math.random() * 255,
+                            g: Math.random() * 255,
+                            b: Math.random() * 255,
+                        },
+                        pulseValue: Math.random(),
+                        pulse: true
+                    });
             }
 
 
@@ -107,7 +164,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         if(!started) return;
         
         if (data.type === "food-spawn") {
-            food.set(data.id, { x: data.x, y: data.y, color: { r: Math.random() * 255, g: Math.random() * 255, b: Math.random() * 255, }, pulseValue: Math.random(), pulse: true });
+            food.set(data.id,
+                {
+                    x: data.x,
+                    y: data.y,
+                    /* colorIndex: Math.floor(Math.random() * foodSprites.length), */
+                    color: {
+                        r: Math.random() * 255,
+                        g: Math.random() * 255,
+                        b: Math.random() * 255,
+                    },
+                    pulseValue: Math.random(),
+                    pulse: true
+                });
         } else if (data.type === "food-remove") {
             food.delete(data.id);
         } else if (data.type === "kill-snake") {
@@ -238,25 +307,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 
 
-        for (const f of food.values()) {
-            if (f.pulseValue > 1) f.pulse = false;
-            if (f.pulseValue < 0) f.pulse = true;
-
-
-            if (f.pulse) f.pulseValue += dt * 2;
-            else f.pulseValue -= dt;
-
-            const pulseValue = 3 + f.pulseValue * 3;
-
-            ctx.beginPath();
-            ctx.fillStyle = `rgba(${f.color.r}, ${f.color.g}, ${f.color.b}, ${.3 + f.pulseValue})`;
-            ctx.shadowColor = `rgba(${f.color.r}, ${f.color.g}, ${f.color.b})`;
-            ctx.shadowBlur = 10;
-            ctx.arc(f.x, f.y, pulseValue, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.shadowColor = "#b7acd1";
-        ctx.shadowBlur = 0;
+        drawFood(dt);
 
 
         for (const s of snakes.values()) {
@@ -316,11 +367,66 @@ document.addEventListener("DOMContentLoaded", async () => {
         const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length; */
 
         
-    
+        console.log(`Render time: ${time.toFixed(2)}ms`);
         if (time > 16.6) console.warn(`⚠️ Render time: ${time.toFixed(2)}ms`);
         /* if (avg > 16.6) {
             console.warn(`⚠️ Render avg: ${avg.toFixed(2)}ms`);
         } */
+    }
+
+    function drawFood(dt) {
+        const startPerformance = performance.now();
+
+        const cellSize = canvas.width / 2;
+        buildSpatialGridFood(food, foodSpatialGrid, cellSize);
+        
+        const cx = Math.floor(playerPos.x / cellSize);
+        const cy = Math.floor(playerPos.y / cellSize);
+        ctx.shadowBlur = 10;
+
+        // 3×3 сусідніх комірки
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                const key = `${cx + dx},${cy + dy}`;
+                const points = foodSpatialGrid.get(key);
+                
+                if (!points) continue;
+
+                for (const f of points) {
+                    const dx = f.x - playerPos.x;
+                    const dy = f.y - playerPos.y;
+                    const viewRadius = cellSize + 20;
+                    if (dx * dx + dy * dy > viewRadius * viewRadius) continue;
+
+                    /* const foodSprite = foodSprites[f.colorIndex];
+                    ctx.drawImage(foodSprite, f.x - 10, f.y - 10); */
+
+                    
+                    /* if (f.pulseValue > 1) f.pulse = false;
+                    if (f.pulseValue < 0) f.pulse = true;
+        
+        
+                    if (f.pulse) f.pulseValue += dt * 2;
+                    else f.pulseValue -= dt;
+        
+                    const pulseValue = 3 + f.pulseValue * 3; */
+        
+                    ctx.beginPath();
+                    /* ctx.globalAlpha = 0.3 + f.pulseValue; */
+                    ctx.fillStyle = `rgb(${f.color.r}, ${f.color.g}, ${f.color.b})`;
+                    ctx.shadowColor = `rgb(${f.color.r}, ${f.color.g}, ${f.color.b})`;
+                    ctx.arc(f.x, f.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+        ctx.globalAlpha = 1;
+        ctx.shadowColor = "#b7acd1";
+        ctx.shadowBlur = 0;
+        
+        const endPerformance = performance.now();
+        const timePerformance = endPerformance - startPerformance;
+        console.log(timePerformance);
     }
 
     function setupCanvas() {
